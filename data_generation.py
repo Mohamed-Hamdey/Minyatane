@@ -1,13 +1,14 @@
 import pandas as pd
 import numpy as np
 import random
-from datetime import datetime, timedelta
 
 # -----------------------------
-# CONFIGURATION
+# CONFIG
 # -----------------------------
-NUM_CARS = 50
-RECORDS_PER_CAR = 100
+INPUT_FILE = "car_maintenance_dataset.csv"
+OUTPUT_FILE = "car_maintenance_dataset_expanded.csv"
+
+NEW_RECORDS = 100000  # how many new rows you want
 
 PARTS_LIFETIME_KM = {
     "oil": 5000,
@@ -22,60 +23,68 @@ PARTS_LIFETIME_KM = {
 PARTS = list(PARTS_LIFETIME_KM.keys())
 
 # -----------------------------
-# GENERATE DATA
+# LOAD EXISTING DATA
 # -----------------------------
-data = []
+df = pd.read_csv(INPUT_FILE)
 
-start_date = datetime(2023, 1, 1)
-
-for car_id in range(1, NUM_CARS + 1):
-
-    # random starting km
-    current_km = random.randint(50000, 150000)
-
-    for _ in range(RECORDS_PER_CAR):
-
-        part = random.choice(PARTS)
-
-        # simulate last change km
-        max_life = PARTS_LIFETIME_KM[part]
-        km_diff = random.randint(0, int(max_life * 1.5))
-
-        last_change_km = current_km - km_diff
-
-        # simulate time difference
-        days_diff = random.randint(1, 400)
-        last_change_date = start_date - timedelta(days=days_diff)
-        current_date = start_date
-
-        # label generation
-        if km_diff > max_life:
-            needs_change = 1
-        else:
-            needs_change = 0
-
-        data.append({
-            "car_id": car_id,
-            "part": part,
-            "current_km": current_km,
-            "last_change_km": last_change_km,
-            "km_diff": km_diff,
-            "days_diff": days_diff,
-            "needs_change": needs_change
-        })
+new_data = []
 
 # -----------------------------
-# CREATE DATAFRAME
+# GENERATE MORE DATA
 # -----------------------------
-df = pd.DataFrame(data)
+for _ in range(NEW_RECORDS):
 
-# shuffle dataset
-df = df.sample(frac=1).reset_index(drop=True)
+    # pick a random existing car
+    car_id = random.choice(df["car_id"].unique())
+
+    part = random.choice(PARTS)
+
+    # simulate current km based on existing distribution
+    current_km = int(np.random.normal(
+        df["current_km"].mean(),
+        df["current_km"].std()
+    ))
+
+    current_km = max(1000, current_km)
+
+    max_life = PARTS_LIFETIME_KM[part]
+
+    # generate km_diff with more realism
+    km_diff = int(np.random.normal(max_life * 0.8, max_life * 0.5))
+    km_diff = max(0, km_diff)
+
+    last_change_km = current_km - km_diff
+
+    days_diff = random.randint(1, 500)
+
+    # label
+    needs_change = 1 if km_diff > max_life else 0
+
+    new_data.append({
+        "car_id": car_id,
+        "part": part,
+        "current_km": current_km,
+        "last_change_km": last_change_km,
+        "km_diff": km_diff,
+        "days_diff": days_diff,
+        "needs_change": needs_change
+    })
 
 # -----------------------------
-# SAVE DATA
+# MERGE DATA
 # -----------------------------
-df.to_csv("car_maintenance_dataset.csv", index=False)
+new_df = pd.DataFrame(new_data)
 
-print("✅ Dataset generated successfully!")
-print(df.head())
+final_df = pd.concat([df, new_df], ignore_index=True)
+
+# shuffle
+final_df = final_df.sample(frac=1).reset_index(drop=True)
+
+# -----------------------------
+# SAVE
+# -----------------------------
+final_df.to_csv(OUTPUT_FILE, index=False)
+
+print("✅ Dataset expanded successfully!")
+print(f"Old size: {len(df)}")
+print(f"New size: {len(final_df)}")
