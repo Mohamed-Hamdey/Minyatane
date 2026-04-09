@@ -5,19 +5,30 @@ import random
 # -----------------------------
 # CONFIG
 # -----------------------------
-INPUT_FILE = "car_maintenance_dataset.csv"
+INPUT_FILE = "car_maintenance_dataset_full.csv"
 OUTPUT_FILE = "car_maintenance_dataset_expanded.csv"
 
-NEW_RECORDS = 100000  # how many new rows you want
+NEW_RECORDS = 100000
 
 PARTS_LIFETIME_KM = {
     "oil": 5000,
-    "air_filter": 10000,
+    "air_filter": 8000,
     "brake_pads": 20000,
-    "battery": 40000,
-    "tires": 50000,
+    "battery": 45000,
+    "tires": 60000,
     "spark_plugs": 30000,
     "fuel_filter": 15000
+}
+
+# NEW: time-based thresholds (days)
+PARTS_LIFETIME_DAYS = {
+    "oil": 90,
+    "air_filter": 180,
+    "brake_pads": 365,
+    "battery": 720,
+    "tires": 900,
+    "spark_plugs": 540,
+    "fuel_filter": 300
 }
 
 PARTS = list(PARTS_LIFETIME_KM.keys())
@@ -34,32 +45,75 @@ new_data = []
 # -----------------------------
 for _ in range(NEW_RECORDS):
 
-    # pick a random existing car
+    # pick random car
     car_id = random.choice(df["car_id"].unique())
 
     part = random.choice(PARTS)
 
-    # simulate current km based on existing distribution
+    # -----------------------------
+    # REALISTIC CURRENT KM
+    # -----------------------------
     current_km = int(np.random.normal(
         df["current_km"].mean(),
         df["current_km"].std()
     ))
+    current_km = max(5000, current_km)
 
-    current_km = max(1000, current_km)
+    # -----------------------------
+    # KM DIFF (better distribution)
+    # -----------------------------
+    km_threshold = PARTS_LIFETIME_KM[part]
 
-    max_life = PARTS_LIFETIME_KM[part]
+    # mixture distribution (normal + extreme cases)
+    if random.random() < 0.8:
+        km_diff = int(np.random.normal(km_threshold * 0.7, km_threshold * 0.3))
+    else:
+        # overdue / neglected cases
+        km_diff = int(np.random.normal(km_threshold * 1.5, km_threshold * 0.5))
 
-    # generate km_diff with more realism
-    km_diff = int(np.random.normal(max_life * 0.8, max_life * 0.5))
     km_diff = max(0, km_diff)
 
     last_change_km = current_km - km_diff
 
-    days_diff = random.randint(1, 500)
+    # -----------------------------
+    # DAYS DIFF (important fix 🔥)
+    # -----------------------------
+    time_threshold = PARTS_LIFETIME_DAYS[part]
 
-    # label
-    needs_change = 1 if km_diff > max_life else 0
+    if random.random() < 0.7:
+        days_diff = int(np.random.normal(time_threshold * 0.7, time_threshold * 0.4))
+    else:
+        days_diff = int(np.random.normal(time_threshold * 1.5, time_threshold * 0.6))
 
+    days_diff = max(1, days_diff)
+
+    # -----------------------------
+    # SMART LABEL (km + time)
+    # -----------------------------
+    km_score = km_diff / km_threshold
+    time_score = days_diff / time_threshold
+
+    # weighted score (km slightly more important)
+    score = 0.7 * km_score + 0.3 * time_score
+
+    if score > 1:
+        needs_change = 1
+    else:
+        needs_change = 0
+
+    # -----------------------------
+    # ADD REALISTIC NOISE 🔥
+    # -----------------------------
+    noise = random.random()
+
+    if needs_change == 1 and noise < 0.1:
+        needs_change = 0  # missed maintenance
+    elif needs_change == 0 and noise < 0.1:
+        needs_change = 1  # early maintenance
+
+    # -----------------------------
+    # SAVE ROW
+    # -----------------------------
     new_data.append({
         "car_id": car_id,
         "part": part,
@@ -71,7 +125,7 @@ for _ in range(NEW_RECORDS):
     })
 
 # -----------------------------
-# MERGE DATA
+# MERGE
 # -----------------------------
 new_df = pd.DataFrame(new_data)
 
